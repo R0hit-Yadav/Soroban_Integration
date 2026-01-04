@@ -2,7 +2,7 @@
 
 A full-stack decentralized application for depositing tokens into a Stellar Soroban smart contract.
 
-## 🌟 Features
+## �🌟 Features
 
 - **Wallet Integration**: Connect with Freighter browser wallet
 - **Real-time Balance**: View your XLM balance instantly
@@ -155,5 +155,10 @@ cargo test
 - **Wallet**: @stellar/freighter-api
 
 ---
+
+
+## Demo Video
+<video src="./Soroban_Task.mp4" autoplay loop muted playsinline width="100%"></video>
+
 
 Built with ❤️ on Stellar Soroban

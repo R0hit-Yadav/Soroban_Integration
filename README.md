@@ -156,9 +156,16 @@ cargo test
 
 ---
 
+## 📸 Screenshots
 
-## Demo Video
-<video src="./Soroban_Task.mp4" autoplay loop muted playsinline width="100%"></video>
+![Screenshot 1](soroban-deposit-dapp/images/Screenshot%20from%202026-01-04%2023-59-16.png)
 
+![Screenshot 2](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-17.png)
+
+![Screenshot 3](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-39.png)
+
+![Screenshot 4](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-56.png)
+
+---
 
 Built with ❤️ on Stellar Soroban

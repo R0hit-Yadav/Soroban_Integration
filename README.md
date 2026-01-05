@@ -158,13 +158,13 @@ cargo test
 
 ## 📸 Screenshots
 
-![Screenshot 1](soroban-deposit-dapp/images/Screenshot%20from%202026-01-04%2023-59-16.png)
+![Screenshot 1](soroban-deposit-dapp/images/sc1.png)
 
-![Screenshot 2](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-17.png)
+![Screenshot 2](soroban-deposit-dapp/images/sc2.png)
 
-![Screenshot 3](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-39.png)
+![Screenshot 3](soroban-deposit-dapp/images/sc3.png)
 
-![Screenshot 4](soroban-deposit-dapp/images/Screenshot%20from%202026-01-05%2000-33-56.png)
+![Screenshot 4](soroban-deposit-dapp/images/sc4.png)
 
 ---
 

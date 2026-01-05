@@ -20,6 +20,7 @@ const SorobanDepositApp: React.FC = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [depositAmount, setDepositAmount] = useState<string>('');
   const [balance, setBalance] = useState<string>('0');
+  const [depositedBalance, setDepositedBalance] = useState<string>('0');
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<Message>({ type: '', text: '' });
 
@@ -39,6 +40,7 @@ const SorobanDepositApp: React.FC = () => {
         setWalletAddress(result.address);
         setIsConnected(true);
         await fetchBalance(result.address);
+        await fetchDepositedBalance(result.address);
       }
     } catch (error) {
       // Silent fail on auto-check
@@ -62,6 +64,7 @@ const SorobanDepositApp: React.FC = () => {
       setWalletAddress(result.address);
       setIsConnected(true);
       await fetchBalance(result.address);
+      await fetchDepositedBalance(result.address);
       
       showMessage('success', 'Wallet connected successfully!');
     } catch (error: any) {
@@ -87,6 +90,48 @@ const SorobanDepositApp: React.FC = () => {
       } else {
         setBalance('Error');
       }
+    }
+  };
+
+  const fetchDepositedBalance = async (address: string): Promise<void> => {
+    try {
+      const server = new StellarSdk.rpc.Server(SOROBAN_RPC_URL);
+      const sourceAccount = await server.getAccount(address);
+      const contract = new StellarSdk.Contract(CONTRACT_ADDRESS);
+      
+      // Build transaction to call get_balance
+      const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(
+          contract.call(
+            'get_balance',
+            StellarSdk.nativeToScVal(address, { type: 'address' })
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      // Simulate the transaction to get the balance
+      const simulationResponse = await server.simulateTransaction(transaction);
+      
+      if (StellarSdk.rpc.Api.isSimulationSuccess(simulationResponse)) {
+        const result = simulationResponse.result;
+        if (result && result.retval) {
+          // Convert ScVal to native value (balance is in stroops)
+          const balanceInStroops = StellarSdk.scValToNative(result.retval);
+          const balanceInXLM = Number(balanceInStroops) / 10_000_000;
+          setDepositedBalance(balanceInXLM.toFixed(7));
+        } else {
+          setDepositedBalance('0');
+        }
+      } else {
+        setDepositedBalance('0');
+      }
+    } catch (error: any) {
+      console.error('Error fetching deposited balance:', error);
+      setDepositedBalance('Error');
     }
   };
 
@@ -150,6 +195,7 @@ const SorobanDepositApp: React.FC = () => {
         
         showMessage('success', `Successfully deposited ${amount} XLM!`);
         await fetchBalance(walletAddress);
+        await fetchDepositedBalance(walletAddress);
         setDepositAmount('');
       } else {
         throw new Error('Transaction rejected by network');
@@ -247,18 +293,37 @@ const SorobanDepositApp: React.FC = () => {
 
           {/* Balance Display */}
           {isConnected && (
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400 text-sm">Your Balance</span>
-                <button
-                  onClick={() => fetchBalance(walletAddress)}
-                  className="text-blue-400 hover:text-blue-300 transition-colors"
-                  title="Refresh balance"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+            <div className="space-y-4">
+              {/* Wallet Balance */}
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-sm">Wallet Balance</span>
+                  <button
+                    onClick={() => fetchBalance(walletAddress)}
+                    className="text-blue-400 hover:text-blue-300 transition-colors"
+                    title="Refresh balance"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-white text-2xl font-bold mt-2">{balance} XLM</p>
               </div>
-              <p className="text-white text-2xl font-bold mt-2">{balance} XLM</p>
+
+              {/* Deposited Balance */}
+              <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-lg p-4 border border-green-700/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-green-400 text-sm font-medium">Total Deposited From Your Wallet</span>
+                  <button
+                    onClick={() => fetchDepositedBalance(walletAddress)}
+                    className="text-green-400 hover:text-green-300 transition-colors"
+                    title="Refresh deposited balance"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-white text-2xl font-bold mt-2">{depositedBalance} XLM</p>
+                <p className="text-green-300 text-xs mt-1">In Contract</p>
+              </div>
             </div>
           )}
 

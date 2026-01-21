@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Wallet, Send, RefreshCw, CheckCircle, XCircle, Link } from 'lucide-react';
+import { AlertCircle, Wallet, Send, RefreshCw, CheckCircle, XCircle, Link, Inbox } from 'lucide-react';
 import { requestAccess, getAddress, signTransaction } from '@stellar/freighter-api';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
@@ -19,6 +19,7 @@ const SorobanDepositApp: React.FC = () => {
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [depositAmount, setDepositAmount] = useState<string>('');
+  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [balance, setBalance] = useState<string>('0');
   const [depositedBalance, setDepositedBalance] = useState<string>('0');
   const [loading, setLoading] = useState<boolean>(false);
@@ -213,6 +214,90 @@ const SorobanDepositApp: React.FC = () => {
     }
   };
 
+  const handleWithdraw = async (): Promise<void> => {
+    const amount = parseFloat(withdrawAmount);
+    
+    if (!amount || amount <= 0) {
+      showMessage('error', 'Please enter a valid amount');
+      return;
+    }
+
+    if (!isConnected) {
+      showMessage('error', 'Please connect your wallet first');
+      return;
+    }
+
+    const depositedAmount = parseFloat(depositedBalance);
+    if (amount > depositedAmount) {
+      showMessage('error', 'Cannot withdraw more than deposited balance');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      showMessage('info', 'Building withdrawal transaction...');
+
+      const server = new StellarSdk.rpc.Server(SOROBAN_RPC_URL);
+      const sourceAccount = await server.getAccount(walletAddress);
+      const contract = new StellarSdk.Contract(CONTRACT_ADDRESS);
+      
+      // Convert XLM to stroops (1 XLM = 10,000,000 stroops)
+      const amountInStroops = Math.floor(amount * 10_000_000);
+      
+      const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(
+          contract.call(
+            'withdraw',
+            StellarSdk.nativeToScVal(walletAddress, { type: 'address' }),
+            StellarSdk.nativeToScVal(amountInStroops, { type: 'i128' })
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      showMessage('info', 'Preparing transaction...');
+      const preparedTx = await server.prepareTransaction(transaction);
+
+      showMessage('info', 'Please sign in Freighter...');
+      const signResult = await signTransaction(preparedTx.toXDR(), {
+        networkPassphrase: NETWORK_PASSPHRASE,
+      });
+
+      showMessage('info', 'Submitting transaction...');
+      const signedTx = StellarSdk.TransactionBuilder.fromXDR(
+        signResult.signedTxXdr,
+        NETWORK_PASSPHRASE
+      );
+
+      const result = await server.sendTransaction(signedTx as StellarSdk.Transaction);
+
+      if (result.status === 'PENDING') {
+        showMessage('info', 'Waiting for confirmation...');
+        await pollTransactionStatus(server, result.hash);
+        
+        showMessage('success', `Successfully withdrew ${amount} XLM!`);
+        await fetchBalance(walletAddress);
+        await fetchDepositedBalance(walletAddress);
+        setWithdrawAmount('');
+      } else {
+        throw new Error('Transaction rejected by network');
+      }
+    } catch (error: any) {
+      console.error('Withdraw error:', error);
+      
+      if (error?.message?.includes('user')) {
+        showMessage('error', 'Transaction rejected');
+      } else {
+        showMessage('error', error?.message || 'Transaction failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const pollTransactionStatus = async (
     server: StellarSdk.rpc.Server,
     hash: string,
@@ -243,132 +328,169 @@ const SorobanDepositApp: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black flex items-center justify-center p-1">
-      <div className="max-w-md w-full bg-gray-900 rounded-2xl shadow-2xl border border-gray-800 overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black flex items-center justify-center p-2">
+      <div className="w-full max-w-sm bg-gray-900 rounded-xl shadow-2xl border border-gray-800 overflow-hidden flex flex-col h-[95vh] max-h-[700px]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6">
-          <h1 className="text-3xl font-bold text-white text-center">
-            Soroban Deposit
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-3 flex-shrink-0">
+          <h1 className="text-xl font-bold text-white text-center">
+            Soroban Deposit DApp
           </h1>
-          <p className="text-blue-100 text-center mt-2 text-sm">
-            Deposit tokens to smart contract
+          <p className="text-blue-100 text-center mt-1 text-xs">
+            Manage your XLM tokens
           </p>
         </div>
 
         {/* Message Banner */}
         {message.text && (
-          <div className={`p-4 ${
+          <div className={`px-3 py-2 flex-shrink-0 ${
             message.type === 'success' ? 'bg-green-900/50 border-green-500' :
             message.type === 'error' ? 'bg-red-900/50 border-red-500' :
             'bg-blue-900/50 border-blue-500'
-          } border-l-4 flex items-start gap-3`}>
-            {message.type === 'success' && <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />}
-            {message.type === 'error' && <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />}
-            {message.type === 'info' && <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />}
-            <p className="text-white text-sm">{message.text}</p>
+          } border-l-4 flex items-start gap-2`}>
+            {message.type === 'success' && <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />}
+            {message.type === 'error' && <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />}
+            {message.type === 'info' && <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />}
+            <p className="text-white text-xs">{message.text}</p>
           </div>
         )}
 
         {/* Main Content */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto px-3 py-8 space-y-5">
           {/* Wallet Connection */}
           {!isConnected ? (
             <button
               onClick={connectWallet}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
-              <Wallet className="w-5 h-5" />
-              {loading ? 'Connecting...' : 'Connect Freighter Wallet'}
+              <Wallet className="w-4 h-4" />
+              {loading ? 'Connecting...' : 'Connect Wallet'}
             </button>
           ) : (
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-400 text-sm">Connected Wallet</span>
+            <div className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-gray-400 text-xs">Connected</span>
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               </div>
-              <p className="text-white font-mono text-sm">{shortenAddress(walletAddress)}</p>
+              <p className="text-white font-mono text-xs">{shortenAddress(walletAddress)}</p>
             </div>
           )}
 
           {/* Balance Display */}
           {isConnected && (
-            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
               {/* Wallet Balance */}
-              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div className="bg-gray-800 rounded-lg p-2 border border-gray-700">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-400 text-sm">Wallet Balance</span>
+                  <span className="text-gray-400 text-xs">Wallet</span>
                   <button
                     onClick={() => fetchBalance(walletAddress)}
                     className="text-blue-400 hover:text-blue-300 transition-colors"
                     title="Refresh balance"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-3 h-3" />
                   </button>
                 </div>
-                <p className="text-white text-2xl font-bold mt-2">{balance} XLM</p>
+                <p className="text-white text-sm font-bold mt-1">{balance} XLM</p>
               </div>
 
               {/* Deposited Balance */}
-              <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-lg p-4 border border-green-700/50">
+              <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 rounded-lg p-2 border border-green-700/50">
                 <div className="flex items-center justify-between">
-                  <span className="text-green-400 text-sm font-medium">Total Deposited From Your Wallet</span>
+                  <span className="text-green-400 text-xs">Contract</span>
                   <button
                     onClick={() => fetchDepositedBalance(walletAddress)}
                     className="text-green-400 hover:text-green-300 transition-colors"
                     title="Refresh deposited balance"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-3 h-3" />
                   </button>
                 </div>
-                <p className="text-white text-2xl font-bold mt-2">{depositedBalance} XLM</p>
-                <p className="text-green-300 text-xs mt-1">In Contract</p>
+                <p className="text-white text-sm font-bold mt-1">{depositedBalance} XLM</p>
               </div>
             </div>
           )}
 
-          {/* Deposit Form */}
+          {/* Transaction Forms */}
           {isConnected && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-gray-400 text-sm mb-2">
-                  Deposit Amount
-                </label>
+            <div className="grid grid-cols-2 gap-2">
+              {/* Deposit Form */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-1">
+                  <Send className="w-3 h-3 text-red-400" />
+                  Deposit
+                </h3>
                 <input
                   type="number"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-transparent text-sm"
                   disabled={loading}
                   min="0"
                   step="0.01"
                 />
+                <button
+                  onClick={handleDeposit}
+                  disabled={loading || !depositAmount}
+                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 rounded flex items-center justify-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                >
+                  <Send className="w-3 h-3" />
+                  {loading ? 'Processing...' : 'Deposit'}
+                </button>
               </div>
 
-              <button
-                onClick={handleDeposit}
-                disabled={loading || !depositAmount}
-                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-4 rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send className="w-5 h-5" />
-                {loading ? 'Processing...' : 'Deposit Tokens'}
-              </button>
+              {/* Withdraw Form */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-1">
+                  <Send className="w-3 h-3 text-green-400 rotate-180" />
+                  Withdraw
+                </h3>
+                <input
+                  type="number"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-transparent text-sm"
+                  disabled={loading}
+                  min="0"
+                  max={depositedBalance}
+                  step="0.01"
+                />
+                <button
+                  onClick={handleWithdraw}
+                  disabled={loading || !withdrawAmount || parseFloat(withdrawAmount) > parseFloat(depositedBalance)}
+                  className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold py-2 rounded flex items-center justify-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                >
+                  <Send className="w-3 h-3 rotate-180" />
+                  {loading ? 'Processing...' : 'Withdraw'}
+                </button>
+                <p className="text-gray-400 text-xs">
+                  Avail: {depositedBalance} XLM
+                </p>
+              </div>
             </div>
           )}
 
           {/* Contract Info */}
-          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
-            <p className="text-gray-400 text-xs mb-2">Contract Address</p>
-            <p className="text-gray-300 text-xs font-mono break-all">{CONTRACT_ADDRESS}</p>
-            <p className="text-blue-300 text-xs font-mono break-all"><a href={`https://stellar.expert/explorer/testnet/contract/${CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer">Click to view on Stellar Expert</a></p>
+          <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-700/50 flex-shrink-0">
+            <p className="text-gray-400 text-xs mb-1">Contract</p>
+            <p className="text-gray-300 text-xs font-mono truncate">{CONTRACT_ADDRESS}</p>
+            <a 
+              href={`https://stellar.expert/explorer/testnet/contract/${CONTRACT_ADDRESS}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-300 text-xs hover:text-blue-200 transition-colors"
+            >
+              View on Stellar Expert
+            </a>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-800 border-t border-gray-700 p-4 text-center">
+        <div className="bg-gray-800 border-t border-gray-700 p-2 text-center flex-shrink-0">
           <p className="text-gray-500 text-xs">
-            Powered by Stellar Soroban • Testnet
+            Stellar Soroban • Testnet
           </p>
         </div>
       </div>
